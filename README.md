@@ -4,9 +4,15 @@ A CSS-first arcade game for learning beginner SQL. Fulfill goblin orders by quer
 
 ## Play
 
-Read the customer order, edit SQL, run the query, and serve the results. Each shift opens with three untimed orders: SELECT, WHERE, and numeric comparisons in a shuffled order, with randomized request values. The next two introduce AND and ORDER BY / LIMIT. Order 4 starts at 80 seconds after the first multiplier increase. Every subsequent multiplier increase reduces the next customer’s patience by 10 seconds, down to 30. Losing a life resets patience to 80 seconds, and subsequent multiplier increases shorten it again. Wrong answers reset the streak but do not restore patience. Later orders are randomized. A timeout shows the departing customer’s name and waits for you to continue before starting the next timer. Three missed customers end a shift. Practice mode is untimed. Switching modes starts a fresh shift.
+A run begins with three shuffled, untimed beginner inquiries. Then customers either browse or buy. Purchases ask for 1–3 specific items, selected with SQL; **Sell order** removes them and pays their price plus a streak tip. **Answer inquiry** pays a tip without changing inventory. Sold items disappear from both SQL results and the ledger.
 
-All orders request every inventory column. Correct answers are checked by result, not exact SQL text. Sorting is checked only when an order requests it. Incorrect answers allow retries. Hints progress to an explained example and then a solution. Arcade high scores are stored on this device only.
+Each shift starts with 24 unique items, six per category, with randomized item selection, prices, and curse status. Orders are generated from remaining stock, with purchases guaranteed near sellout. Empty shelves unlock a shift summary and **Start next shift**. Gold, remaining hearts, and streak carry over. The new shift starts with 80 seconds of patience, and gets no new untimed orders. Three lost hearts end the entire run. Practice stays untimed with no lost hearts.
+
+Difficulty progresses through four tiers: category filtering and sorting; AND plus COUNT inquiries; BETWEEN plus GROUP BY inquiries; then parenthesized OR/AND combinations. Later shifts keep the fourth tier and generate fresh stock and requests. Hints and the ledger explain the current concepts.
+
+Every three correct answers raises the tip multiplier and reduces future patience by 10 seconds, down to 30. A missed customer resets the streak and restores patience to 80 seconds. A named timeout notice pauses until acknowledged. Wrong answers reset the streak but do not consume stock or restore patience. Changing mode starts a new run. Reloading also starts over; only arcade high scores persist on the device.
+
+Answers are graded by results, accepting alternate correct SQL and column order. Purchases explicitly request sorting by price then id to resolve ties. Aggregate inquiries specify their output column names. The first three untimed orders apply only to the beginning of a run.
 
 ## Develop
 
@@ -19,7 +25,7 @@ npm test
 npm run build
 ```
 
-Vite builds a static site into `dist/`. SQL.js and its WebAssembly binary are bundled locally. Queries run in a worker with a four-second timeout; the database is read-only. No account, API key, backend, or external database is needed. Fonts use Google Fonts with local fallback fonts. Portraits are system emoji; no generated art is required.
+Vite builds a static site into `dist/`. SQL.js and its WebAssembly binary are bundled locally. Queries run in a worker with a four-second timeout against a read-only snapshot of current stock. Inventory mutations are controlled by the game after a successful sale. Worker recovery cannot restore sold stock. No account, API key, backend, or external database is needed. Fonts use Google Fonts with local fallback fonts. Portraits are system emoji; no generated art is required.
 
 ## GitHub Pages
 
@@ -35,4 +41,4 @@ Create a public repository named `goblin-order-rush`, push this project to its `
 
 ## Scope
 
-This first version uses one fixed 40-item inventory and five order templates, with randomized parameters after the introductory sequence. Serving does not remove stock. JOINs, accounts, online leaderboards, sound effects, and generated portraits are not included.
+One unit per inventory row. No accounts, server, online leaderboard, JOINs, or player-written mutation queries. The game remains a static GitHub Pages app.

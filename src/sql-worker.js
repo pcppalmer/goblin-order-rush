@@ -1,16 +1,17 @@
 import initSqlJs from "sql.js";
 import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
 import { seed, query } from "./game.js";
-const ready = initSqlJs({ locateFile: () => wasmUrl }).then((SQL) => {
-  const db = new SQL.Database();
-  seed(db);
-  return db;
-});
+const ready = initSqlJs({ locateFile: () => wasmUrl });
 self.onmessage = async ({ data }) => {
+  let db;
   try {
-    const db = await ready;
+    const SQL = await ready;
+    db = new SQL.Database();
+    seed(db, data.stock);
     self.postMessage({ id: data.id, result: query(db, data.sql) });
   } catch (error) {
     self.postMessage({ id: data.id, error: error.message });
+  } finally {
+    db?.close();
   }
 };

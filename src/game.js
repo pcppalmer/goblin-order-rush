@@ -58,12 +58,14 @@ export const inventory = categories.flatMap((category, c) =>
     cursed: i % 3 === 0 ? 1 : 0,
   })),
 );
-export function seed(db) {
+export function seed(db, stock = inventory) {
   db.run(
     "CREATE TABLE inventory (id INTEGER PRIMARY KEY, name TEXT, category TEXT, price INTEGER, cursed INTEGER)",
   );
   const stmt = db.prepare("INSERT INTO inventory VALUES (?, ?, ?, ?, ?)");
-  inventory.forEach((row) => stmt.run(Object.values(row)));
+  stock.forEach((row) =>
+    stmt.run([row.id, row.name, row.category, row.price, row.cursed]),
+  );
   stmt.free();
   db.run("PRAGMA query_only = ON");
 }
@@ -75,59 +77,174 @@ export function createOpeningOrders(random = Math.random) {
   }
   return types;
 }
+export function makeStock(random = Math.random) {
+  return categories.flatMap((category) => {
+    const pool = inventory.filter((item) => item.category === category);
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return pool
+      .slice(0, 6)
+      .map((item) => ({
+        ...item,
+        price: 3 + Math.floor(random() * 40),
+        cursed: random() < 0.3 ? 1 : 0,
+      }));
+  });
+}
 export function orderFor(
   index,
   random = Math.random,
   opening = createOpeningOrders(random),
+  stock = inventory,
+  shift = 1,
+  shiftOrder = index,
 ) {
-  const category = categories[Math.floor(random() * 4)];
-  const budget = 15 + Math.floor(random() * 5) * 5;
-  const count = 2 + Math.floor(random() * 3);
-  const templates = [
+  if (!stock.length) throw new Error("The shop is sold out.");
+  const sample = stock[Math.floor(random() * stock.length)];
+  const category = sample.category;
+  const budget = sample.price + 1 + Math.floor(random() * 10);
+  const basics = [
     {
-      text: "Let me see everything in the shop. Yes, even the suspicious bits.",
+      text: "Let me see everything still on your shelves. Just browsing!",
       sql: "SELECT * FROM inventory;",
       concept: "SELECT",
-      hint: "SELECT chooses columns. The star (*) means every column. FROM names the table.",
+      hint: "SELECT * chooses every column. FROM inventory names the table.",
       starter: "SELECT *\nFROM inventory;",
-      ordered: false,
     },
     {
-      text: `Show me every ${category}. I have very particular hobbies.`,
+      text: `Show me every ${category} you have. I'm only looking.`,
       sql: `SELECT * FROM inventory WHERE category = '${category}';`,
       concept: "WHERE",
-      hint: `WHERE filters rows. Text values need single quotes: category = '${category}'.`,
+      hint: `Filter with WHERE category = '${category}'. Text needs single quotes.`,
       starter: "SELECT *\nFROM inventory\nWHERE ",
-      ordered: false,
     },
     {
-      text: `Show me everything cheaper than ${budget} gold. Goblin economy, you know.`,
+      text: `Show me everything cheaper than ${budget} gold. Just comparing prices.`,
       sql: `SELECT * FROM inventory WHERE price < ${budget};`,
       concept: "Numbers",
-      hint: `Use WHERE price < ${budget}. Numbers do not need quotes. Cheaper than means strictly less than.`,
+      hint: `Use WHERE price < ${budget}. Numbers do not need quotes.`,
       starter: "SELECT *\nFROM inventory\nWHERE ",
-      ordered: false,
-    },
-    {
-      text: `Every uncursed ${category}, please. Last time was a whole thing.`,
-      sql: `SELECT * FROM inventory WHERE category = '${category}' AND cursed = 0;`,
-      concept: "AND",
-      hint: `Combine conditions with AND. Use category = '${category}' AND cursed = 0.`,
-      starter: "SELECT *\nFROM inventory\nWHERE ",
-      ordered: false,
-    },
-    {
-      text: `Your ${count} cheapest items, cheapest first. If prices tie, smaller id first.`,
-      sql: `SELECT * FROM inventory ORDER BY price ASC, id ASC LIMIT ${count};`,
-      concept: "ORDER BY + LIMIT",
-      hint: `ORDER BY price ASC, id ASC sorts from low to high, then by id. LIMIT ${count} keeps only ${count} rows.`,
-      starter: "SELECT *\nFROM inventory\nORDER BY ",
-      ordered: true,
     },
   ];
-  return templates[
-    index < 3 ? opening[index] : index < 5 ? index : Math.floor(random() * 5)
-  ];
+  const inquiry = (base) => ({
+    ...base,
+    kind: "inquiry",
+    ordered: false,
+    requirement:
+      base.requirement ||
+      "Return every column with SELECT *. Inquiries do not sell stock.",
+  });
+  if (index < 3) return inquiry(basics[opening[index]]);
+  if (stock.length > 3 && shiftOrder % 4 === 3) {
+    if (shift >= 3)
+      return inquiry({
+        text: "How many items do you have in each category? I'm planning a party, not buying yet.",
+        sql: "SELECT category, COUNT(*) AS total FROM inventory GROUP BY category;",
+        concept: "GROUP BY",
+        hint: "SELECT category, COUNT(*) AS total FROM inventory GROUP BY category counts each category separately.",
+        starter:
+          "SELECT category, COUNT(*) AS total\nFROM inventory\nGROUP BY ",
+        requirement:
+          "Return category and COUNT(*) AS total. Stock stays on the shelves.",
+      });
+    if (shift === 2)
+      return inquiry({
+        text: `How many ${category} items are left? Just checking.`,
+        sql: `SELECT COUNT(*) AS total FROM inventory WHERE category = '${category}';`,
+        concept: "COUNT",
+        hint: `COUNT(*) counts rows. Name the column with AS total and filter category = '${category}'.`,
+        starter: "SELECT COUNT(*) AS total\nFROM inventory\nWHERE ",
+        requirement:
+          "Return one column named total. This is an inquiry, not a purchase.",
+      });
+    return inquiry(basics[Math.floor(random() * basics.length)]);
+  }
+  let filter = `category = '${category}'`;
+  let eligible = stock.filter((item) => item.category === category);
+  let description = `${category} items`;
+  let concept = "ORDER BY + LIMIT";
+  if (shift >= 2) {
+    filter += ` AND cursed = ${sample.cursed}`;
+    eligible = eligible.filter((item) => item.cursed === sample.cursed);
+    description = `${sample.cursed ? "cursed" : "uncursed"} ${category} items`;
+    concept = "AND + sorting";
+  }
+  if (shift >= 3) {
+    const low = Math.max(0, sample.price - 8),
+      high = sample.price + 8;
+    filter += ` AND price BETWEEN ${low} AND ${high}`;
+    eligible = eligible.filter(
+      (item) => item.price >= low && item.price <= high,
+    );
+    description += ` costing ${low} to ${high} gold each, inclusive`;
+    concept = "BETWEEN + AND";
+  }
+  if (shift >= 4) {
+    const other =
+      stock.find((item) => item.category !== category)?.category || category;
+    filter = `(category = '${category}' OR category = '${other}') AND cursed = ${sample.cursed} AND price <= ${budget}`;
+    eligible = stock.filter(
+      (item) =>
+        (item.category === category || item.category === other) &&
+        item.cursed === sample.cursed &&
+        item.price <= budget,
+    );
+    description = `${sample.cursed ? "cursed" : "uncursed"} items from either ${category} or ${other}, at most ${budget} gold each`;
+    concept = "OR + AND";
+  }
+  const count = Math.min(1 + Math.floor(random() * 3), eligible.length);
+  return {
+    kind: "purchase",
+    text: `I'll buy your ${count} cheapest ${description}. Cheapest first, please!`,
+    sql: `SELECT * FROM inventory WHERE ${filter} ORDER BY price ASC, id ASC LIMIT ${count};`,
+    concept,
+    ordered: true,
+    starter: "SELECT *\nFROM inventory\nWHERE ",
+    hint: `Filter with ${filter}. Then ORDER BY price ASC, id ASC LIMIT ${count}.`,
+    requirement: `Return all columns, sorted by price then id (smallest first). Sell exactly ${count} item${count === 1 ? "" : "s"}.`,
+  };
+}
+export function completeOrder(stock, order, actual, expected, streak) {
+  if (!sameResult(actual, expected, order.ordered)) return null;
+  const tip = 10 * (1 + Math.floor(streak / 3));
+  if (order.kind === "inquiry")
+    return { stock, earned: tip, sale: 0, tip, sold: 0 };
+  const ids = actual.values.map((row) => row[actual.columns.indexOf("id")]);
+  const selected = stock.filter((item) => ids.includes(item.id));
+  if (
+    !ids.length ||
+    new Set(ids).size !== ids.length ||
+    selected.length !== ids.length
+  )
+    return null;
+  const sale = selected.reduce((sum, item) => sum + item.price, 0);
+  return {
+    stock: stock.filter((item) => !ids.includes(item.id)),
+    earned: sale + tip,
+    sale,
+    tip,
+    sold: ids.length,
+  };
+}
+export function advanceShift(state, random = Math.random) {
+  if (state.stock.length || state.hearts <= 0)
+    throw new Error("Finish selling the stock before restocking.");
+  return {
+    ...state,
+    shift: state.shift + 1,
+    shiftOrder: 0,
+    index: state.index + 1,
+    stock: makeStock(random),
+    shiftStartGold: state.score,
+    patience: 80,
+    remaining: 80,
+    roundPatience: 80,
+    shiftComplete: false,
+    paused: false,
+    departed: null,
+  };
 }
 export function sameResult(actual, expected, ordered = false) {
   if (!actual || !expected || actual.columns.length !== expected.columns.length)

@@ -125,3 +125,121 @@ test("opening orders shuffle the three beginner skills without duplicates", () =
     assert.ok(query(database, orderFor(i, () => 0, first).sql).values.length);
   database.close();
 });
+
+import { makeStock, completeOrder, advanceShift } from "../src/game.js";
+function rng(seedValue) {
+  let n = seedValue;
+  return () => {
+    n = (1664525 * n + 1013904223) >>> 0;
+    return n / 4294967296;
+  };
+}
+function queryStock(stock, sql) {
+  const database = new SQL.Database();
+  seed(database, stock);
+  try {
+    return query(database, sql);
+  } finally {
+    database.close();
+  }
+}
+test("restocks vary but always contain 24 unique items across four categories", () => {
+  const first = makeStock(rng(1)),
+    second = makeStock(rng(2));
+  assert.equal(first.length, 24);
+  assert.equal(new Set(first.map((i) => i.id)).size, 24);
+  assert.notDeepEqual(first, second);
+  for (const category of ["potion", "weapon", "charm", "snack"])
+    assert.equal(first.filter((i) => i.category === category).length, 6);
+});
+test("purchases remove only selected stock and credit item value plus a streak tip", () => {
+  const stock = makeStock(rng(4));
+  const order = orderFor(4, () => 0, [0, 1, 2], stock, 2, 0);
+  const expected = queryStock(stock, order.sql);
+  const wrong = { ...expected, values: [] };
+  assert.equal(completeOrder(stock, order, wrong, expected, 3), null);
+  assert.equal(stock.length, 24);
+  const done = completeOrder(stock, order, expected, expected, 3);
+  assert.equal(done.tip, 20);
+  assert.equal(done.stock.length, 24 - expected.values.length);
+  assert.equal(done.earned, done.sale + 20);
+  const soldIds = expected.values.map(
+    (row) => row[expected.columns.indexOf("id")],
+  );
+  assert.ok(done.stock.every((item) => !soldIds.includes(item.id)));
+  assert.equal(completeOrder(done.stock, order, expected, expected, 3), null);
+});
+test("aggregate inquiries do not consume stock", () => {
+  const stock = makeStock(rng(5));
+  for (const shift of [2, 3, 4]) {
+    const order = orderFor(7, () => 0, [0, 1, 2], stock, shift, 3);
+    assert.equal(order.kind, "inquiry");
+    const expected = queryStock(stock, order.sql);
+    const done = completeOrder(stock, order, expected, expected, 0);
+    assert.equal(done.stock, stock);
+    assert.equal(done.sold, 0);
+    assert.equal(done.sale, 0);
+    assert.equal(done.earned, 10);
+  }
+});
+test("depleting inventories remain fulfillable through multiple difficulty tiers", () => {
+  for (let shift = 1; shift <= 5; shift++)
+    for (let seedValue = 1; seedValue <= 8; seedValue++) {
+      const random = rng(seedValue),
+        opening = createOpeningOrders(random);
+      let stock = makeStock(random),
+        round = 0;
+      while (stock.length && round < 100) {
+        const order = orderFor(
+          shift === 1 ? round : round + 50,
+          random,
+          opening,
+          stock,
+          shift,
+          round,
+        );
+        const expected = queryStock(stock, order.sql);
+        assert.ok(expected.values.length > 0);
+        const done = completeOrder(stock, order, expected, expected, round);
+        assert.ok(done);
+        if (order.kind === "purchase")
+          assert.ok(done.sold >= 1 && done.sold <= 3);
+        stock = done.stock;
+        round++;
+      }
+      assert.equal(
+        stock.length,
+        0,
+        `shift ${shift} seed ${seedValue} failed to sell out`,
+      );
+    }
+});
+test("new shifts preserve gold, hearts, and total order count without another tutorial", () => {
+  const before = {
+    stock: [],
+    shift: 1,
+    shiftOrder: 20,
+    index: 20,
+    score: 777,
+    hearts: 2,
+    streak: 8,
+    shiftComplete: true,
+    paused: true,
+    patience: 30,
+    mode: "arcade",
+  };
+  const next = advanceShift(before, rng(42));
+  assert.equal(next.score, 777);
+  assert.equal(next.hearts, 2);
+  assert.equal(next.streak, 8);
+  assert.equal(next.shift, 2);
+  assert.equal(next.shiftOrder, 0);
+  assert.equal(next.index, 21);
+  assert.equal(next.patience, 80);
+  assert.equal(next.stock.length, 24);
+  assert.equal(next.shiftStartGold, 777);
+  assert.equal(isUntimed(next.index, next.mode), false);
+  assert.equal(isUntimed(next.index, "practice"), true);
+  assert.throws(() => advanceShift({ ...before, hearts: 0 }));
+  assert.throws(() => advanceShift({ ...before, stock: makeStock(rng(1)) }));
+});

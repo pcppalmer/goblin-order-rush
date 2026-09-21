@@ -84,9 +84,17 @@ header {
   border: 3px solid #b78329;
   background: radial-gradient(circle at 32% 25%, #fff0ad, #e9bd58 58%, #b87924);
   color: #684214;
-  font: 40px/1 "UnifrakturMaguntia", "Old English Text MT", Georgia, serif;
+  font:
+    40px/1 "UnifrakturMaguntia",
+    "Old English Text MT",
+    Georgia,
+    serif;
   text-shadow: 0 1px 0 #fff1bb;
-  box-shadow: inset 0 0 0 2px #ffe7a0, inset 0 0 0 5px #c99438, 0 3px 0 #79511e, 0 5px 9px #0005;
+  box-shadow:
+    inset 0 0 0 2px #ffe7a0,
+    inset 0 0 0 5px #c99438,
+    0 3px 0 #79511e,
+    0 5px 9px #0005;
 }
 
 h1 {
@@ -493,7 +501,7 @@ footer {
     padding: 12px;
   }
   .stat strong {
-  white-space: nowrap;
+    white-space: nowrap;
     font-size: 18px;
   }
   footer {
@@ -511,4 +519,17 @@ footer {
   * {
     transition: none !important;
   }
+}
+
+.order-requirement {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #465737;
+  margin: -4px 0 16px;
+}
+.patience-line {
+  gap: 16px;
+}
+#time {
+  white-space: nowrap;
 }
