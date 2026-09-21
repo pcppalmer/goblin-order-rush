@@ -56,7 +56,7 @@ let state = {
   index: 0,
   shift: 1,
   shiftOrder: 0,
-  stock: makeStock(),
+  stock: makeStock(Math.random, 1),
   shiftComplete: false,
   shiftStartGold: 0,
   opening: createOpeningOrders(),
@@ -114,7 +114,7 @@ function renderStock() {
       ]),
     }),
   );
-  $("stock-count").textContent = `${state.stock.length} items left`;
+  $("stock-count").textContent = `${state.stock.length} item${state.stock.length === 1 ? "" : "s"} left`;
   $("shift-label").textContent = `Shift ${state.shift}`;
   const tier = Math.min(state.shift, 4);
   $("shift-skill").textContent = [
@@ -126,7 +126,7 @@ function renderStock() {
   ][tier];
   $("shift-guide").textContent = [
     "",
-    "Use WHERE to find the right category, then ORDER BY price ASC, id ASC and LIMIT to choose what a customer buys.",
+    "A quick 16-item shift: customers buy 3–6 items, with different tastes. Filter by category, curse status, or price. ASC means cheapest first; DESC means most expensive first. Break price ties with id ASC.",
     "Purchases combine category AND cursed status. Inquiries use COUNT(*) AS total to count matching items.",
     "BETWEEN includes both price boundaries. Inquiries use SELECT category, COUNT(*) AS total FROM inventory GROUP BY category.",
     "Group alternatives in parentheses: (category = 'potion' OR category = 'charm') AND cursed = 0. Combine that with a price limit and sorting.",
@@ -180,6 +180,7 @@ async function nextOrder() {
     state.stock,
     state.shift,
     state.shiftOrder,
+    order?.variant,
   );
   served = false;
   state.roundPatience = state.patience;
@@ -395,7 +396,7 @@ function restart() {
     index: 0,
     shift: 1,
     shiftOrder: 0,
-    stock: makeStock(),
+    stock: makeStock(Math.random, 1),
     shiftComplete: false,
     shiftStartGold: 0,
     opening: createOpeningOrders(),

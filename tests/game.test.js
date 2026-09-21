@@ -203,7 +203,7 @@ test("depleting inventories remain fulfillable through multiple difficulty tiers
         const done = completeOrder(stock, order, expected, expected, round);
         assert.ok(done);
         if (order.kind === "purchase")
-          assert.ok(done.sold >= 1 && done.sold <= 3);
+          assert.ok(done.sold >= 1 && done.sold <= 6);
         stock = done.stock;
         round++;
       }
@@ -242,4 +242,43 @@ test("new shifts preserve gold, hearts, and total order count without another tu
   assert.equal(isUntimed(next.index, "practice"), true);
   assert.throws(() => advanceShift({ ...before, hearts: 0 }));
   assert.throws(() => advanceShift({ ...before, stock: makeStock(rng(1)) }));
+});
+
+test("first shift finishes in at most nine orders with varied, fulfillable baskets", () => {
+  const totals = [];
+  const variants = new Set();
+  let descending = 0;
+  for (let seedValue = 1; seedValue <= 100; seedValue++) {
+    const random = rng(seedValue),
+      opening = createOpeningOrders(random);
+    let stock = makeStock(random, 1),
+      round = 0,
+      last = null;
+    assert.equal(stock.length, 16);
+    while (stock.length && round < 20) {
+      const order = orderFor(round, random, opening, stock, 1, round, last);
+      const expected = queryStock(stock, order.sql);
+      if (round >= 3) {
+        assert.equal(order.kind, "purchase");
+        assert.notEqual(order.variant, last);
+        variants.add(order.variant);
+        last = order.variant;
+        if (order.sql.includes("price DESC")) descending++;
+        assert.ok(expected.values.length >= Math.min(3, stock.length));
+      }
+      stock = completeOrder(stock, order, expected, expected, round).stock;
+      round++;
+    }
+    assert.equal(stock.length, 0);
+    assert.ok(round >= 6 && round <= 9);
+    totals.push(round);
+  }
+  assert.ok(variants.has("curse-1"));
+  assert.ok(variants.has("budget"));
+  assert.ok(variants.has("luxury"));
+  assert.ok(descending > 0);
+  assert.ok(new Set(totals).size > 1);
+  console.log(
+    `First-shift pacing: ${Math.min(...totals)}–${Math.max(...totals)} orders; mean ${(totals.reduce((a, b) => a + b, 0) / totals.length).toFixed(1)} across 100 seeds.`,
+  );
 });

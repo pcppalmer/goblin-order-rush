@@ -77,20 +77,18 @@ export function createOpeningOrders(random = Math.random) {
   }
   return types;
 }
-export function makeStock(random = Math.random) {
+export function makeStock(random = Math.random, shift = 2) {
   return categories.flatMap((category) => {
     const pool = inventory.filter((item) => item.category === category);
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(random() * (i + 1));
       [pool[i], pool[j]] = [pool[j], pool[i]];
     }
-    return pool
-      .slice(0, 6)
-      .map((item) => ({
-        ...item,
-        price: 3 + Math.floor(random() * 40),
-        cursed: random() < 0.3 ? 1 : 0,
-      }));
+    return pool.slice(0, shift === 1 ? 4 : 6).map((item) => ({
+      ...item,
+      price: 3 + Math.floor(random() * 40),
+      cursed: random() < 0.3 ? 1 : 0,
+    }));
   });
 }
 export function orderFor(
@@ -100,6 +98,7 @@ export function orderFor(
   stock = inventory,
   shift = 1,
   shiftOrder = index,
+  previousVariant = null,
 ) {
   if (!stock.length) throw new Error("The shop is sold out.");
   const sample = stock[Math.floor(random() * stock.length)];
@@ -137,7 +136,7 @@ export function orderFor(
       "Return every column with SELECT *. Inquiries do not sell stock.",
   });
   if (index < 3) return inquiry(basics[opening[index]]);
-  if (stock.length > 3 && shiftOrder % 4 === 3) {
+  if (shift > 1 && stock.length > 6 && shiftOrder % 4 === 3) {
     if (shift >= 3)
       return inquiry({
         text: "How many items do you have in each category? I'm planning a party, not buying yet.",
@@ -160,6 +159,77 @@ export function orderFor(
           "Return one column named total. This is an inquiry, not a purchase.",
       });
     return inquiry(basics[Math.floor(random() * basics.length)]);
+  }
+  if (shift === 1) {
+    // Broad filters guarantee substantial baskets and a short first shift.
+    const median = [...stock].sort((a, b) => a.price - b.price)[
+      Math.floor(stock.length / 2)
+    ].price;
+    const candidates = [
+      ...categories.map((c) => ({
+        key: `category-${c}`,
+        filter: `category = '${c}'`,
+        matches: (item) => item.category === c,
+        description: `${c} items`,
+        flavor: "I've got a very specific shopping list.",
+      })),
+      ...[0, 1].map((c) => ({
+        key: `curse-${c}`,
+        filter: `cursed = ${c}`,
+        matches: (item) => item.cursed === c,
+        description: `${c ? "cursed" : "uncursed"} items`,
+        flavor: c
+          ? "For no reason. Absolutely no reason."
+          : "My insurance insists.",
+      })),
+      {
+        key: "budget",
+        filter: `price <= ${median}`,
+        matches: (item) => item.price <= median,
+        description: `items costing at most ${median} gold each`,
+        flavor: "A bargain is a bargain, even if it bites.",
+      },
+      {
+        key: "luxury",
+        filter: `price >= ${median}`,
+        matches: (item) => item.price >= median,
+        description: `items costing at least ${median} gold each`,
+        flavor: "I have expensive goblin tastes.",
+      },
+      {
+        key: "everything",
+        filter: null,
+        matches: () => true,
+        description: "items in the shop",
+        flavor: "I'm furnishing a very questionable dungeon.",
+      },
+    ].filter(
+      (candidate) =>
+        stock.filter(candidate.matches).length >= Math.min(3, stock.length),
+    );
+    const fresh = candidates.filter(
+      (candidate) => candidate.key !== previousVariant,
+    );
+    const choices = fresh.length ? fresh : candidates;
+    const chosen = choices[Math.floor(random() * choices.length)];
+    const count = Math.min(
+      3 + Math.floor(random() * 4),
+      stock.filter(chosen.matches).length,
+    );
+    const descending = random() < 0.5;
+    const direction = descending ? "DESC" : "ASC";
+    const where = chosen.filter ? ` WHERE ${chosen.filter}` : "";
+    return {
+      kind: "purchase",
+      variant: chosen.key,
+      ordered: true,
+      concept: chosen.filter ? "WHERE + sorting" : "ORDER BY + LIMIT",
+      text: `I'll buy your ${count} ${descending ? "most expensive" : "cheapest"} ${count === 1 ? chosen.description.replace(/\bitems\b/g, "item") : chosen.description}! ${chosen.flavor}`,
+      sql: `SELECT * FROM inventory${where} ORDER BY price ${direction}, id ASC LIMIT ${count};`,
+      starter: `SELECT *\nFROM inventory\n${chosen.filter ? "WHERE " : "ORDER BY "}`,
+      hint: `${chosen.filter ? `Filter with ${chosen.filter}. ` : "No filter needed. "}ORDER BY price ${direction} sorts ${descending ? "highest" : "lowest"} prices first. Break ties with id ASC, then LIMIT ${count}.`,
+      requirement: `Return all columns, price ${descending ? "highest" : "lowest"} first; tied prices use smallest id first. Sell exactly ${count} item${count === 1 ? "" : "s"}.`,
+    };
   }
   let filter = `category = '${category}'`;
   let eligible = stock.filter((item) => item.category === category);
@@ -194,16 +264,18 @@ export function orderFor(
     description = `${sample.cursed ? "cursed" : "uncursed"} items from either ${category} or ${other}, at most ${budget} gold each`;
     concept = "OR + AND";
   }
-  const count = Math.min(1 + Math.floor(random() * 3), eligible.length);
+  const count = Math.min(3 + Math.floor(random() * 4), eligible.length);
+  const direction = random() < 0.5 ? "DESC" : "ASC";
+  const priceOrder = direction === "DESC" ? "most expensive" : "cheapest";
   return {
     kind: "purchase",
-    text: `I'll buy your ${count} cheapest ${description}. Cheapest first, please!`,
-    sql: `SELECT * FROM inventory WHERE ${filter} ORDER BY price ASC, id ASC LIMIT ${count};`,
+    text: `I'll buy your ${count} ${priceOrder} ${count === 1 ? description.replace(/\bitems\b/g, "item") : description}. ${direction === "DESC" ? "Only the best for my secret project!" : "My coin purse is mostly moths."}`,
+    sql: `SELECT * FROM inventory WHERE ${filter} ORDER BY price ${direction}, id ASC LIMIT ${count};`,
     concept,
     ordered: true,
     starter: "SELECT *\nFROM inventory\nWHERE ",
-    hint: `Filter with ${filter}. Then ORDER BY price ASC, id ASC LIMIT ${count}.`,
-    requirement: `Return all columns, sorted by price then id (smallest first). Sell exactly ${count} item${count === 1 ? "" : "s"}.`,
+    hint: `Filter with ${filter}. Then ORDER BY price ${direction}, id ASC LIMIT ${count}.`,
+    requirement: `Return all columns, sorted by price ${direction === "DESC" ? "highest" : "lowest"} first, then id smallest first. Sell exactly ${count} item${count === 1 ? "" : "s"}.`,
   };
 }
 export function completeOrder(stock, order, actual, expected, streak) {
@@ -236,7 +308,7 @@ export function advanceShift(state, random = Math.random) {
     shift: state.shift + 1,
     shiftOrder: 0,
     index: state.index + 1,
-    stock: makeStock(random),
+    stock: makeStock(random, state.shift + 1),
     shiftStartGold: state.score,
     patience: 80,
     remaining: 80,
