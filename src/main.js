@@ -1,5 +1,5 @@
 import "./style.css";
-import { orderFor, sameResult, inventory } from "./game.js";
+import { orderFor, sameResult, inventory, isUntimed, patienceAfterSuccess, patienceAfterLifeLost } from "./game.js";
 const $ = (id) => document.getElementById(id);
 let worker,
   pending = new Map(),
@@ -52,6 +52,8 @@ let state = {
   paused: false,
   over: false,
   remaining: 90,
+  patience: 90,
+  roundPatience: 90,
   busy: false,
   result: null,
   sqlRun: "",
@@ -66,7 +68,7 @@ const patrons = [
   "Crumb · definitely not three rats",
 ];
 $("app").innerHTML =
-  `<main class="shell"><header><div class="brand"><div class="mark" aria-hidden="true">G</div><div><h1>Goblin Order Rush</h1><p>A little shop. A lot of suspicious inventory.</p></div></div><div class="stats"><div class="stat"><span>Gold earned</span><strong class="coins" id="score">0</strong></div><div class="stat"><span>Streak</span><strong id="streak">×1</strong></div><div class="stat"><span>Hearts</span><strong class="hearts" id="hearts" aria-label="3 hearts">♥ ♥ ♥</strong></div></div></header><div class="toolbar"><div class="toolbar-left"><span class="eyebrow"><i class="dot"></i>Shop is open</span><label><span class="tag">Mode </span><select id="mode" aria-label="Game mode"><option value="arcade">Arcade shift</option><option value="practice">Untimed practice</option></select></label></div><button id="pause">Pause</button></div><section class="order" aria-labelledby="order-text"><div class="portrait" aria-hidden="true">🧌</div><div class="order-copy"><div class="eyebrow" id="patron"></div><h2 id="order-text"></h2><div class="patience-line"><span id="lesson"></span><span id="time"></span></div><div class="meter" role="progressbar" aria-label="Customer patience" aria-valuemin="0" aria-valuemax="90" aria-valuenow="90"><div id="meter"></div></div></div></section><div class="workspace"><div><section class="panel"><div class="panel-head"><h3>Your spellbook</h3><span class="tag">SQL / inventory</span></div><div class="editor-wrap"><div class="line-numbers" aria-hidden="true">1\n2\n3\n4\n5</div><textarea id="sql" aria-label="SQL query" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea></div><div class="editor-actions"><button class="quiet" id="hint">✧ Need a hint?</button><div><span class="shortcut">⌘ / Ctrl + Enter</span><button class="primary" id="run">Run query ↗</button></div></div><div class="hint" id="hint-text" hidden></div></section><section class="panel result-panel"><div class="panel-head"><h3>The counter</h3><span class="tag" id="row-count">No items yet</span></div><div id="results" class="table-scroll"><div class="empty">Run a query to put items on the counter.</div></div><div class="result-foot"><div role="status" aria-live="polite" class="feedback" id="feedback">Return all columns with SELECT *.</div><button class="gold" id="serve" disabled>Serve order →</button><button class="primary" id="next" hidden>Next customer →</button></div></section></div><aside class="panel"><div class="panel-head"><h3>Shop ledger</h3><span class="tag">40 items</span></div><div class="schema"><p class="schema-title">▦ inventory</p><div class="schema-row"><span>id</span><span>INTEGER</span></div><div class="schema-row"><span>name</span><span>TEXT</span></div><div class="schema-row"><span>category</span><span>TEXT</span></div><div class="schema-row"><span>price</span><span>INTEGER</span></div><div class="schema-row"><span>cursed</span><span>0 or 1</span></div><div class="note">Categories: <b>potion, weapon, charm, snack</b><br>Prices are in gold. Cursed: 1 = yes, 0 = no.</div><details><summary>Peek inside the ledger</summary><div class="table-scroll" id="inventory"></div></details></div><div class="recipe"><h3>A tiny SQL recipe</h3><p><code>SELECT *</code> — choose every column<br><code>FROM inventory</code> — pick the table<br><code>WHERE price &lt; 20</code> — filter items<br><code>ORDER BY price ASC</code> — cheapest first<br><code>LIMIT 3</code> — take three rows</p><p>Text goes in single quotes:<br><code>WHERE category = 'potion'</code></p></div><div class="recipe"><h3>How the shift works</h3><p>Read the order, query the ledger, then serve. The first five customers have endless patience. After that, you have 90 seconds per order.</p><p>Every three correct orders raises your multiplier. Miss three customers and the shift ends. Practice has no timer or lost hearts.</p></div></aside></div><footer><span>Made for curious goblins. No SQL experience needed.</span><span id="best"></span></footer></main><div class="overlay" id="overlay" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><span class="eyebrow">Goblin Order Rush</span><h2 id="modal-title"></h2><p id="modal-copy"></p><button class="primary" id="resume"></button></section></div>`;
+  `<main class="shell"><header><div class="brand"><div class="mark" aria-hidden="true">G</div><div><h1>Goblin Order Rush</h1><p>A little shop. A lot of suspicious inventory.</p></div></div><div class="stats"><div class="stat"><span>Gold earned</span><strong class="coins" id="score">0</strong></div><div class="stat"><span>Streak</span><strong id="streak">×1</strong></div><div class="stat"><span>Hearts</span><strong class="hearts" id="hearts" aria-label="3 hearts">♥ ♥ ♥</strong></div></div></header><div class="toolbar"><div class="toolbar-left"><span class="eyebrow"><i class="dot"></i>Shop is open</span><label><span class="tag">Mode </span><select id="mode" aria-label="Game mode"><option value="arcade">Arcade shift</option><option value="practice">Untimed practice</option></select></label></div><button id="pause">Pause</button></div><section class="order" aria-labelledby="order-text"><div class="portrait" aria-hidden="true">🧌</div><div class="order-copy"><div class="eyebrow" id="patron"></div><h2 id="order-text"></h2><div class="patience-line"><span id="lesson"></span><span id="time"></span></div><div class="meter" role="progressbar" aria-label="Customer patience" aria-valuemin="0" aria-valuemax="90" aria-valuenow="90"><div id="meter"></div></div></div></section><div class="workspace"><div><section class="panel"><div class="panel-head"><h3>Your spellbook</h3><span class="tag">SQL / inventory</span></div><div class="editor-wrap"><div class="line-numbers" aria-hidden="true">1\n2\n3\n4\n5</div><textarea id="sql" aria-label="SQL query" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea></div><div class="editor-actions"><button class="quiet" id="hint">✧ Need a hint?</button><div><span class="shortcut">⌘ / Ctrl + Enter</span><button class="primary" id="run">Run query ↗</button></div></div><div class="hint" id="hint-text" hidden></div></section><section class="panel result-panel"><div class="panel-head"><h3>The counter</h3><span class="tag" id="row-count">No items yet</span></div><div id="results" class="table-scroll"><div class="empty">Run a query to put items on the counter.</div></div><div class="result-foot"><div role="status" aria-live="polite" class="feedback" id="feedback">Return all columns with SELECT *.</div><button class="gold" id="serve" disabled>Serve order →</button><button class="primary" id="next" hidden>Next customer →</button></div></section></div><aside class="panel"><div class="panel-head"><h3>Shop ledger</h3><span class="tag">40 items</span></div><div class="schema"><p class="schema-title">▦ inventory</p><div class="schema-row"><span>id</span><span>INTEGER</span></div><div class="schema-row"><span>name</span><span>TEXT</span></div><div class="schema-row"><span>category</span><span>TEXT</span></div><div class="schema-row"><span>price</span><span>INTEGER</span></div><div class="schema-row"><span>cursed</span><span>0 or 1</span></div><div class="note">Categories: <b>potion, weapon, charm, snack</b><br>Prices are in gold. Cursed: 1 = yes, 0 = no.</div><details><summary>Peek inside the ledger</summary><div class="table-scroll" id="inventory"></div></details></div><div class="recipe"><h3>A tiny SQL recipe</h3><p><code>SELECT *</code> — choose every column<br><code>FROM inventory</code> — pick the table<br><code>WHERE price &lt; 20</code> — filter items<br><code>ORDER BY price ASC</code> — cheapest first<br><code>LIMIT 3</code> — take three rows</p><p>Text goes in single quotes:<br><code>WHERE category = 'potion'</code></p></div><div class="recipe"><h3>How the shift works</h3><p>Read the order, query the ledger, then serve. The first three customers have endless patience. Order 4 starts with 80 seconds. Each multiplier increase cuts patience by 10 seconds, down to 30. Losing a heart resets patience to 80 seconds.</p><p>Every three correct orders raises your multiplier. Miss three customers and the shift ends. Practice has no timer or lost hearts.</p></div></aside></div><footer><span>Made for curious goblins. No SQL experience needed.</span><span id="best"></span></footer></main><div class="overlay" id="overlay" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><span class="eyebrow">Goblin Order Rush</span><h2 id="modal-title"></h2><p id="modal-copy"></p><button class="primary" id="resume"></button></section></div>`;
 function table(result) {
   const table = document.createElement("table");
   const head = table.createTHead().insertRow();
@@ -112,20 +114,22 @@ function stats() {
   $("best").textContent = `Arcade best: ${best} gold`;
 }
 function timerUI() {
-  const untimed = state.index < 5 || state.mode === "practice";
+  const untimed = isUntimed(state.index, state.mode);
   $("time").textContent = untimed
     ? "Take your time"
     : `${Math.ceil(state.remaining)}s patience`;
-  $("meter").style.width = `${untimed ? 100 : (state.remaining / 90) * 100}%`;
+  $("meter").style.width = `${untimed ? 100 : (state.remaining / state.roundPatience) * 100}%`;
+  document.querySelector(".meter").setAttribute("aria-valuemax", state.roundPatience);
   document
     .querySelector(".meter")
-    .setAttribute("aria-valuenow", untimed ? 90 : Math.ceil(state.remaining));
+    .setAttribute("aria-valuenow", untimed ? state.roundPatience : Math.ceil(state.remaining));
 }
 async function nextOrder() {
   const generation = ++state.generation;
   order = orderFor(state.index);
   served = false;
-  state.remaining = 90;
+  state.roundPatience = state.patience;
+  state.remaining = state.roundPatience;
   state.result = null;
   state.sqlRun = "";
   state.hints = 0;
@@ -136,8 +140,8 @@ async function nextOrder() {
   $("patron").textContent = patrons[state.index % patrons.length];
   $("order-text").textContent = order.text;
   $("lesson").textContent =
-    state.index < 5
-      ? `Apprentice order ${state.index + 1}/5 · ${order.concept}`
+    state.index < 3
+      ? `Apprentice order ${state.index + 1}/3 · ${order.concept}`
       : `Order ${state.index + 1} · ${order.concept}`;
   $("hint-text").hidden = true;
   $("hint").textContent = "✧ Need a hint?";
@@ -211,6 +215,7 @@ function showModal(over) {
 }
 function miss() {
   state.hearts--;
+  state.patience = patienceAfterLifeLost();
   state.streak = 0;
   state.index++;
   stats();
@@ -246,6 +251,7 @@ $("serve").onclick = () => {
   if (sameResult(state.result, expected, order.ordered)) {
     served = true;
     state.streak++;
+    state.patience = patienceAfterSuccess(state.patience, state.streak);
     const earned = 10 * (1 + Math.floor((state.streak - 1) / 3));
     state.score += earned;
     saveBest();
@@ -285,6 +291,7 @@ function restart() {
     score: 0,
     streak: 0,
     hearts: 3,
+    patience: 90,
     paused: false,
     over: false,
     busy: false,
@@ -323,8 +330,7 @@ setInterval(() => {
   const delta = (now - previous) / 1000;
   previous = now;
   if (
-    state.index >= 5 &&
-    state.mode === "arcade" &&
+    !isUntimed(state.index, state.mode) &&
     !state.paused &&
     !state.over &&
     !state.busy &&

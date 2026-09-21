@@ -78,3 +78,26 @@ test("invalid SQL gives an error and a following query still works", () => {
   );
   database.close();
 });
+
+import {isUntimed, patienceAfterSuccess, patienceAfterLifeLost} from '../src/game.js';
+test('only the first three arcade orders are untimed; practice always is', () => {
+  assert.deepEqual([0,1,2,3,4].map(i=>isUntimed(i,'arcade')), [true,true,true,false,false]);
+  assert.equal(isUntimed(100,'practice'),true);
+});
+test('multiplier milestones shorten patience and stop at thirty seconds', () => {
+  let patience=90;
+  const rounds=[];
+  for(let streak=1;streak<=24;streak++) {
+    patience=patienceAfterSuccess(patience,streak);
+    if(streak%3===0) rounds.push(patience);
+  }
+  assert.deepEqual(rounds,[80,70,60,50,40,30,30,30]);
+});
+test('life loss restores eighty seconds; the next milestone reduces it again', () => {
+  let patience=patienceAfterLifeLost();
+  assert.equal(patience,80);
+  assert.equal(patienceAfterSuccess(patience,0),80);
+  assert.equal(patienceAfterSuccess(patience,1),80);
+  assert.equal(patienceAfterSuccess(patience,2),80);
+  assert.equal(patienceAfterSuccess(patience,3),70);
+});

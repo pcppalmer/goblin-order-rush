@@ -4,7 +4,7 @@ A CSS-first arcade game for learning beginner SQL. Fulfill goblin orders by quer
 
 ## Play
 
-Read the customer order, edit SQL, run the query, and serve the results. The first five orders introduce SELECT, WHERE, numeric comparisons, AND, and ORDER BY / LIMIT without a timer. Later orders are randomized and have 90 seconds of patience. Three missed customers end a shift. Practice mode is untimed. Switching modes starts a fresh shift.
+Read the customer order, edit SQL, run the query, and serve the results. The first five orders introduce SELECT, WHERE, numeric comparisons, AND, and ORDER BY / LIMIT with the first three orders untimed. Order 4 starts at 80 seconds after the first multiplier increase. Every subsequent multiplier increase reduces the next customer’s patience by 10 seconds, down to 30. Losing a life resets patience to 80 seconds, and subsequent multiplier increases shorten it again. Wrong answers reset the streak but do not restore patience. Later orders are randomized. Three missed customers end a shift. Practice mode is untimed. Switching modes starts a fresh shift.
 
 All orders request every inventory column. Correct answers are checked by result, not exact SQL text. Sorting is checked only when an order requests it. Incorrect answers allow retries. Hints progress to an explained example and then a solution. Arcade high scores are stored on this device only.
 

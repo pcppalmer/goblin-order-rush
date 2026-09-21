@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap");
 :root {
   font-family: "DM Sans", sans-serif;
   color: #f0eee3;
@@ -75,13 +75,20 @@ header {
   gap: 13px;
 }
 .mark {
-  background: var(--lime);
-  color: #28351c;
-  font: bold 30px Georgia;
-  padding: 8px 14px;
-  border-radius: 10px;
-  transform: rotate(-5deg);
+  flex: 0 0 58px;
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 3px solid #b78329;
+  background: radial-gradient(circle at 32% 25%, #fff0ad, #e9bd58 58%, #b87924);
+  color: #684214;
+  font: 40px/1 "UnifrakturMaguntia", "Old English Text MT", Georgia, serif;
+  text-shadow: 0 1px 0 #fff1bb;
+  box-shadow: inset 0 0 0 2px #ffe7a0, inset 0 0 0 5px #c99438, 0 3px 0 #79511e, 0 5px 9px #0005;
 }
+
 h1 {
   font-size: 24px;
   letter-spacing: -1px;
@@ -112,6 +119,7 @@ h1 {
   letter-spacing: 1px;
 }
 .stat strong {
+  white-space: nowrap;
   font-family: "Space Mono", monospace;
   font-size: 22px;
 }
@@ -485,6 +493,7 @@ footer {
     padding: 12px;
   }
   .stat strong {
+  white-space: nowrap;
     font-size: 18px;
   }
   footer {

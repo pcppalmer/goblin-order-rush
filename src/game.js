@@ -156,3 +156,13 @@ export function query(db, sql) {
   if (!result) throw new Error("Write a SELECT query first.");
   return result;
 }
+
+export function isUntimed(index, mode) {
+  return index < 3 || mode === "practice";
+}
+export function patienceAfterSuccess(patience, streak) {
+  return streak > 0 && streak % 3 === 0 ? Math.max(30, patience - 10) : patience;
+}
+export function patienceAfterLifeLost() {
+  return 80;
+}
