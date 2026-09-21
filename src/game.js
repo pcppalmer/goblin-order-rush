@@ -67,7 +67,19 @@ export function seed(db) {
   stmt.free();
   db.run("PRAGMA query_only = ON");
 }
-export function orderFor(index, random = Math.random) {
+export function createOpeningOrders(random = Math.random) {
+  const types = [0, 1, 2];
+  for (let i = types.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [types[i], types[j]] = [types[j], types[i]];
+  }
+  return types;
+}
+export function orderFor(
+  index,
+  random = Math.random,
+  opening = createOpeningOrders(random),
+) {
   const category = categories[Math.floor(random() * 4)];
   const budget = 15 + Math.floor(random() * 5) * 5;
   const count = 2 + Math.floor(random() * 3);
@@ -113,7 +125,9 @@ export function orderFor(index, random = Math.random) {
       ordered: true,
     },
   ];
-  return templates[index < 5 ? index : Math.floor(random() * 5)];
+  return templates[
+    index < 3 ? opening[index] : index < 5 ? index : Math.floor(random() * 5)
+  ];
 }
 export function sameResult(actual, expected, ordered = false) {
   if (!actual || !expected || actual.columns.length !== expected.columns.length)
@@ -161,7 +175,9 @@ export function isUntimed(index, mode) {
   return index < 3 || mode === "practice";
 }
 export function patienceAfterSuccess(patience, streak) {
-  return streak > 0 && streak % 3 === 0 ? Math.max(30, patience - 10) : patience;
+  return streak > 0 && streak % 3 === 0
+    ? Math.max(30, patience - 10)
+    : patience;
 }
 export function patienceAfterLifeLost() {
   return 80;
