@@ -2,6 +2,7 @@ import "./style.css";
 import {
   orderFor,
   makeStock,
+  makeMarket,
   completeOrder,
   advanceShift,
   createOpeningOrders,
@@ -44,7 +45,7 @@ function execute(sql) {
       4000,
     );
     pending.set(id, { resolve, reject, timer });
-    worker.postMessage({ id, sql, stock: state.stock });
+    worker.postMessage({ id, sql, stock: state.stock, market: state.market });
   });
 }
 startWorker();
@@ -57,6 +58,7 @@ let state = {
   shift: 1,
   shiftOrder: 0,
   stock: makeStock(Math.random, 1),
+  market: makeMarket(Math.random, 1),
   shiftComplete: false,
   shiftStartGold: 0,
   opening: createOpeningOrders(),
@@ -84,7 +86,7 @@ const patrons = [
   "Crumb · definitely not three rats",
 ];
 $("app").innerHTML =
-  `<main class="shell"><header><div class="brand"><div class="mark" aria-hidden="true">G</div><div><h1>Goblin Order Rush</h1><p>A little shop. A lot of suspicious inventory.</p></div></div><div class="stats"><div class="stat"><span>Gold earned</span><strong class="coins" id="score">0</strong></div><div class="stat"><span>Streak</span><strong id="streak">×1</strong></div><div class="stat"><span>Hearts</span><strong class="hearts" id="hearts" aria-label="3 hearts">♥ ♥ ♥</strong></div></div></header><div class="toolbar"><div class="toolbar-left"><span class="eyebrow"><i class="dot"></i><span id="shift-label">Shift 1</span> · Shop is open</span><label><span class="tag">Mode </span><select id="mode" aria-label="Game mode"><option value="arcade">Arcade shift</option><option value="practice">Untimed practice</option></select></label></div><button id="pause">Pause</button></div><section class="order" aria-labelledby="order-text"><div class="portrait" aria-hidden="true">🧌</div><div class="order-copy"><div class="eyebrow" id="patron"></div><h2 id="order-text"></h2><p class="order-requirement" id="order-requirement"></p><div class="patience-line"><span id="lesson"></span><span id="time"></span></div><div class="meter" role="progressbar" aria-label="Customer patience" aria-valuemin="0" aria-valuemax="90" aria-valuenow="90"><div id="meter"></div></div></div></section><div class="workspace"><div><section class="panel"><div class="panel-head"><h3>Your spellbook</h3><span class="tag">SQL / inventory</span></div><div class="editor-wrap"><div class="line-numbers" aria-hidden="true">1\n2\n3\n4\n5</div><textarea id="sql" aria-label="SQL query" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea></div><div class="editor-actions"><button class="quiet" id="hint">✧ Need a hint?</button><div><span class="shortcut">⌘ / Ctrl + Enter</span><button class="primary" id="run">Run query ↗</button></div></div><div class="hint" id="hint-text" hidden></div></section><section class="panel result-panel"><div class="panel-head"><h3>The counter</h3><span class="tag" id="row-count">No items yet</span></div><div id="results" class="table-scroll"><div class="empty">Run a query to put items on the counter.</div></div><div class="result-foot"><div role="status" aria-live="polite" class="feedback" id="feedback">Return all columns with SELECT *.</div><button class="gold" id="serve" disabled>Serve order →</button><button class="primary" id="next" hidden>Next customer →</button></div></section></div><aside class="panel"><div class="panel-head"><h3>Shop ledger</h3><span class="tag" id="stock-count"></span></div><div class="schema"><p class="schema-title">▦ inventory</p><div class="schema-row"><span>id</span><span>INTEGER</span></div><div class="schema-row"><span>name</span><span>TEXT</span></div><div class="schema-row"><span>category</span><span>TEXT</span></div><div class="schema-row"><span>price</span><span>INTEGER</span></div><div class="schema-row"><span>cursed</span><span>0 or 1</span></div><div class="note">Categories: <b>potion, weapon, charm, snack</b><br>Prices are in gold. Cursed: 1 = yes, 0 = no.</div><details><summary>Peek inside the ledger</summary><div class="table-scroll" id="inventory"></div></details></div><div class="recipe"><h3>A tiny SQL recipe</h3><p><code>SELECT *</code> — choose every column<br><code>FROM inventory</code> — pick the table<br><code>WHERE price &lt; 20</code> — filter items<br><code>ORDER BY price ASC</code> — cheapest first<br><code>LIMIT 3</code> — take three rows</p><p>Text goes in single quotes:<br><code>WHERE category = 'potion'</code></p></div><div class="recipe"><h3 id="shift-skill"></h3><p id="shift-guide"></p></div><div class="recipe"><h3>How the shift works</h3><p>Read the order, query the ledger, then serve. The first three orders mix basic SQL skills in a random order and have endless patience. Order 4 starts with 80 seconds. Each multiplier increase cuts patience by 10 seconds, down to 30. Losing a heart resets patience to 80 seconds.</p><p>Every three correct orders raises your multiplier. Purchases remove stock; inquiries do not. Sell out to start a harder shift with fresh stock and 80 seconds of patience. Gold and hearts carry over. Only a new run gets three untimed orders. Lose your last heart and the run ends. Practice has no timer or lost hearts.</p></div></aside></div><footer><span>Made for curious goblins. No SQL experience needed.</span><span id="best"></span></footer></main><div class="overlay" id="overlay" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><span class="eyebrow">Goblin Order Rush</span><h2 id="modal-title"></h2><p id="modal-copy"></p><button class="primary" id="resume"></button></section></div>`;
+  `<main class="shell"><header><div class="brand"><div class="mark" aria-hidden="true">G</div><div><h1>Goblin Order Rush</h1><p>A little shop. A lot of suspicious inventory.</p></div></div><div class="stats"><div class="stat"><span>Gold earned</span><strong class="coins" id="score">0</strong></div><div class="stat"><span>Streak</span><strong id="streak">×1</strong></div><div class="stat"><span>Hearts</span><strong class="hearts" id="hearts" aria-label="3 hearts">♥ ♥ ♥</strong></div></div></header><div class="toolbar"><div class="toolbar-left"><span class="eyebrow"><i class="dot"></i><span id="shift-label">Shift 1</span> · Shop is open</span><label><span class="tag">Mode </span><select id="mode" aria-label="Game mode"><option value="arcade">Arcade shift</option><option value="practice">Untimed practice</option></select></label></div><button id="pause">Pause</button></div><section class="order" aria-labelledby="order-text"><div class="portrait" aria-hidden="true">🧌</div><div class="order-copy"><div class="eyebrow" id="patron"></div><h2 id="order-text"></h2><p class="order-requirement" id="order-requirement"></p><div class="patience-line"><span id="lesson"></span><span id="time"></span></div><div class="meter" role="progressbar" aria-label="Customer patience" aria-valuemin="0" aria-valuemax="90" aria-valuenow="90"><div id="meter"></div></div></div></section><div class="workspace"><div><section class="panel"><div class="panel-head"><h3>Your spellbook</h3><span class="tag">SQL / inventory</span></div><div class="editor-wrap"><div class="line-numbers" aria-hidden="true">1\n2\n3\n4\n5</div><textarea id="sql" aria-label="SQL query" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea></div><div class="editor-actions"><button class="quiet" id="hint">✧ Need a hint?</button><div><span class="shortcut">⌘ / Ctrl + Enter</span><button class="primary" id="run">Run query ↗</button></div></div><div class="hint" id="hint-text" hidden></div></section><section class="panel result-panel"><div class="panel-head"><h3>The counter</h3><span class="tag" id="row-count">No items yet</span></div><div id="results" class="table-scroll"><div class="empty">Run a query to put items on the counter.</div></div><div class="result-foot"><div role="status" aria-live="polite" class="feedback" id="feedback">Return all columns with SELECT *.</div><button class="gold" id="serve" disabled>Serve order →</button><button class="primary" id="next" hidden>Next customer →</button></div></section></div><aside class="panel"><div class="panel-head"><h3>Shop ledger</h3><span class="tag" id="stock-count"></span></div><div class="schema"><p class="schema-title">▦ inventory</p><div class="schema-row"><span>name</span><span>TEXT</span></div><div class="schema-row"><span>category</span><span>TEXT</span></div><div class="schema-row"><span>price</span><span>INTEGER</span></div><div class="schema-row"><span>cursed</span><span>0 or 1</span></div><div class="note">Categories: <b>potion, weapon, charm, snack</b><br>Prices are in gold. Cursed: 1 = yes, 0 = no.</div><details><summary>Peek inside the ledger</summary><div class="table-scroll" id="inventory"></div></details></div><div class="recipe" id="market-guide" hidden><h3>The black market</h3><p>No public ledger. Discover stock in your spellbook with <code>SELECT * FROM black_market;</code></p><p>Columns: <code>name, category, price, cursed</code>. Each name is unique. From shift 3, one delivery lets you JOIN on category and import up to three matching items on consignment. A JOIN reads data; the Import stock button transfers it. Unsourced stock does not prevent a sellout.</p></div><div class="recipe"><h3>A tiny SQL recipe</h3><p><code>SELECT *</code> — choose every column<br><code>FROM inventory</code> — pick the table<br><code>WHERE price &lt; 20</code> — filter items<br><code>ORDER BY price ASC</code> — cheapest first<br><code>LIMIT 3</code> — take three rows</p><p>Text goes in single quotes:<br><code>WHERE category = 'potion'</code></p></div><div class="recipe"><h3 id="shift-skill"></h3><p id="shift-guide"></p></div><div class="recipe"><h3>How the shift works</h3><p>Read the order, query the ledger, then serve. The first three orders mix basic SQL skills in a random order and have endless patience. Order 4 starts with 80 seconds. Each multiplier increase cuts patience by 10 seconds, down to 30. Losing a heart resets patience to 80 seconds.</p><p>Every three correct orders raises your multiplier. Purchases remove stock; inquiries do not. Sell out to start a harder shift with fresh stock and 80 seconds of patience. Gold and hearts carry over. Only a new run gets three untimed orders. Lose your last heart and the run ends. Practice has no timer or lost hearts.</p></div></aside></div><footer><span>Made for curious goblins. No SQL experience needed.</span><span id="best"></span></footer></main><div class="overlay" id="overlay" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><span class="eyebrow">Goblin Order Rush</span><h2 id="modal-title"></h2><p id="modal-copy"></p><button class="primary" id="resume"></button></section></div>`;
 function table(result) {
   const table = document.createElement("table");
   const head = table.createTHead().insertRow();
@@ -104,18 +106,14 @@ function table(result) {
 function renderStock() {
   $("inventory").replaceChildren(
     table({
-      columns: ["id", "name", "category", "price", "cursed"],
-      values: state.stock.map((r) => [
-        r.id,
-        r.name,
-        r.category,
-        r.price,
-        r.cursed,
-      ]),
+      columns: ["name", "category", "price", "cursed"],
+      values: state.stock.map((r) => [r.name, r.category, r.price, r.cursed]),
     }),
   );
-  $("stock-count").textContent = `${state.stock.length} item${state.stock.length === 1 ? "" : "s"} left`;
+  $("stock-count").textContent =
+    `${state.stock.length} item${state.stock.length === 1 ? "" : "s"} left`;
   $("shift-label").textContent = `Shift ${state.shift}`;
+  $("market-guide").hidden = state.shift < 2;
   const tier = Math.min(state.shift, 4);
   $("shift-skill").textContent = [
     "",
@@ -126,9 +124,9 @@ function renderStock() {
   ][tier];
   $("shift-guide").textContent = [
     "",
-    "A quick 16-item shift: customers buy 3–6 items, with different tastes. Filter by category, curse status, or price. ASC means cheapest first; DESC means most expensive first. Break price ties with id ASC.",
-    "Purchases combine category AND cursed status. Inquiries use COUNT(*) AS total to count matching items.",
-    "BETWEEN includes both price boundaries. Inquiries use SELECT category, COUNT(*) AS total FROM inventory GROUP BY category.",
+    "A quick 16-item shift: customers buy 3–6 items, with different tastes. Filter by category, curse status, or price. ASC means cheapest first; DESC means most expensive first. Break price ties alphabetically with name ASC. Some customers request items by name.",
+    "Customers request named items or combine category AND cursed status. One inquiry introduces the hidden black_market. Inquiries use COUNT(*) AS total to count matching items.",
+    "One JOIN delivery can add up to three black-market items to your ledger. BETWEEN includes both price boundaries. Inquiries use SELECT category, COUNT(*) AS total FROM inventory GROUP BY category.",
     "Group alternatives in parentheses: (category = 'potion' OR category = 'charm') AND cursed = 0. Combine that with a price limit and sorting.",
   ][tier];
 }
@@ -181,6 +179,7 @@ async function nextOrder() {
     state.shift,
     state.shiftOrder,
     order?.variant,
+    state.market,
   );
   served = false;
   state.roundPatience = state.patience;
@@ -196,13 +195,17 @@ async function nextOrder() {
   $("order-text").textContent = order.text;
   $("order-requirement").textContent = order.requirement;
   $("serve").textContent =
-    order.kind === "purchase" ? "Sell order →" : "Answer inquiry →";
+    order.kind === "import"
+      ? "Import stock →"
+      : order.kind === "purchase"
+        ? "Sell order →"
+        : "Answer inquiry →";
   $("next").textContent = "Next customer →";
   renderStock();
   $("lesson").textContent =
     state.index < 3
       ? `Apprentice order ${state.index + 1}/3 · ${order.concept}`
-      : `Shift ${state.shift} · Order ${state.shiftOrder + 1} · ${order.kind === "purchase" ? "Purchase" : "Inquiry"} · ${order.concept}`;
+      : `Shift ${state.shift} · Order ${state.shiftOrder + 1} · ${order.kind === "import" ? "Delivery" : order.kind === "purchase" ? "Purchase" : "Inquiry"} · ${order.concept}`;
   $("hint-text").hidden = true;
   $("hint").textContent = "✧ Need a hint?";
   $("next").hidden = true;
@@ -213,9 +216,11 @@ async function nextOrder() {
     '<div class="empty">Run a query to put items on the counter.</div>';
   $("row-count").textContent = "No items yet";
   feedback(
-    order.kind === "purchase"
-      ? "Find the requested items, then sell them."
-      : "Answer the question. No stock will be sold.",
+    order.kind === "import"
+      ? "Explore the black market, then JOIN to find stock for your shelves."
+      : order.kind === "purchase"
+        ? "Find the requested items, then sell them."
+        : "Answer the question. No stock will be sold.",
   );
   timerUI();
   try {
@@ -247,9 +252,11 @@ async function run() {
     $("row-count").textContent =
       `${result.values.length} row${result.values.length === 1 ? "" : "s"}`;
     feedback(
-      order.kind === "purchase"
-        ? "Query complete. Ready to sell?"
-        : "Query complete. Ready to answer?",
+      order.kind === "import"
+        ? "Query complete. Got the right delivery? Import it into your ledger."
+        : order.kind === "purchase"
+          ? "Query complete. Ready to sell?"
+          : "Query complete. Ready to answer?",
     );
     $("serve").disabled = $("sql").value !== sql;
   } catch (e) {
@@ -340,21 +347,25 @@ $("serve").onclick = () => {
     state.result,
     expected,
     state.streak,
+    state.market,
   );
   if (completion) {
     served = true;
     state.streak++;
     state.patience = patienceAfterSuccess(state.patience, state.streak);
     state.stock = completion.stock;
+    if (completion.market) state.market = completion.market;
     state.score += completion.earned;
     state.shiftComplete = state.stock.length === 0;
     renderStock();
     saveBest();
     stats();
     feedback(
-      order.kind === "purchase"
-        ? `Sold ${completion.sold} item${completion.sold === 1 ? "" : "s"}! +${completion.sale} gold +${completion.tip} tip.`
-        : `“That’s what I needed to know!” +${completion.tip} gold. Stock unchanged.`,
+      order.kind === "import"
+        ? `Imported ${completion.imported} items into your ledger! +${completion.tip} gold. These items are now available to customers.`
+        : order.kind === "purchase"
+          ? `Sold ${completion.sold} item${completion.sold === 1 ? "" : "s"}! +${completion.sale} gold +${completion.tip} tip.`
+          : `“That’s what I needed to know!” +${completion.tip} gold. Stock unchanged.`,
     );
     if (state.shiftComplete) $("next").textContent = "Finish shift →";
     $("serve").hidden = true;
@@ -397,6 +408,7 @@ function restart() {
     shift: 1,
     shiftOrder: 0,
     stock: makeStock(Math.random, 1),
+    market: makeMarket(Math.random, 1),
     shiftComplete: false,
     shiftStartGold: 0,
     opening: createOpeningOrders(),

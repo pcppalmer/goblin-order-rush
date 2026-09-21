@@ -58,16 +58,72 @@ export const inventory = categories.flatMap((category, c) =>
     cursed: i % 3 === 0 ? 1 : 0,
   })),
 );
-export function seed(db, stock = inventory) {
-  db.run(
-    "CREATE TABLE inventory (id INTEGER PRIMARY KEY, name TEXT, category TEXT, price INTEGER, cursed INTEGER)",
-  );
-  const stmt = db.prepare("INSERT INTO inventory VALUES (?, ?, ?, ?, ?)");
-  stock.forEach((row) =>
-    stmt.run([row.id, row.name, row.category, row.price, row.cursed]),
-  );
-  stmt.free();
+// IDs are internal game bookkeeping; players work with unique item names.
+export function seed(db, stock = inventory, market = null) {
+  for (const [table, rows] of [
+    ["inventory", stock],
+    ["black_market", market],
+  ]) {
+    if (rows === null) continue;
+    db.run(
+      `CREATE TABLE ${table} (name TEXT PRIMARY KEY, category TEXT, price INTEGER, cursed INTEGER)`,
+    );
+    const stmt = db.prepare(`INSERT INTO ${table} VALUES (?, ?, ?, ?)`);
+    rows.forEach((row) =>
+      stmt.run([row.name, row.category, row.price, row.cursed]),
+    );
+    stmt.free();
+  }
   db.run("PRAGMA query_only = ON");
+}
+export function makeMarket(random = Math.random, shift = 1) {
+  if (shift < 2) return null;
+  const secretNames = [
+    "Midnight Elixir",
+    "Bottled Thunder",
+    "Whisper Knife",
+    "Ghost Hammer",
+    "Stolen Halo",
+    "Hex Locket",
+    "Forbidden Fudge",
+    "Shadow Truffles",
+  ];
+  return secretNames.map((name, i) => ({
+    id: 101 + i,
+    name,
+    category: categories[Math.floor(i / 2)],
+    price: 12 + Math.floor(random() * 35),
+    cursed: random() < 0.5 ? 1 : 0,
+  }));
+}
+const quote = (value) => "'" + value.replaceAll("'", "''") + "'";
+export function marketOrder(shift, shiftOrder, market) {
+  if (!market?.length) return null;
+  if (shift === 2 && shiftOrder === 1)
+    return {
+      kind: "inquiry",
+      concept: "Discover black_market",
+      ordered: true,
+      text: "Psst. What's the cheapest item on the black market? Just tell me its name. You didn't hear this from me.",
+      sql: "SELECT name FROM black_market ORDER BY price ASC, name ASC LIMIT 1;",
+      starter: "SELECT *\nFROM black_market;",
+      hint: "First explore SELECT * FROM black_market. Then select only name, sort by price ASC, name ASC, and LIMIT 1.",
+      requirement:
+        "Return only name for the cheapest item; break price ties alphabetically. This inquiry does not import or sell stock.",
+    };
+  if (shift >= 3 && shiftOrder === 2)
+    return {
+      kind: "import",
+      concept: "JOIN + DISTINCT",
+      ordered: true,
+      text: "A midnight delivery! Source the three cheapest black-market items in categories we still carry. Let's give these suspicious treasures some shelf space.",
+      sql: "SELECT DISTINCT b.name, b.category, b.price, b.cursed FROM black_market AS b JOIN inventory AS i ON b.category = i.category ORDER BY b.price ASC, b.name ASC LIMIT 3;",
+      starter: "SELECT *\nFROM black_market;",
+      hint: "Explore black_market first. JOIN inventory AS i ON b.category = i.category matches categories. Select DISTINCT b.name, b.category, b.price, b.cursed to avoid repeats, then ORDER BY b.price ASC, b.name ASC LIMIT 3.",
+      requirement:
+        "Return the four black-market columns, cheapest first, ties alphabetical. Import up to 3 matching items on consignment (no gold cost). One delivery opportunity per shift. JOIN finds stock; Import stock transfers it.",
+    };
+  return null;
 }
 export function createOpeningOrders(random = Math.random) {
   const types = [0, 1, 2];
@@ -99,6 +155,7 @@ export function orderFor(
   shift = 1,
   shiftOrder = index,
   previousVariant = null,
+  market = null,
 ) {
   if (!stock.length) throw new Error("The shop is sold out.");
   const sample = stock[Math.floor(random() * stock.length)];
@@ -136,6 +193,8 @@ export function orderFor(
       "Return every column with SELECT *. Inquiries do not sell stock.",
   });
   if (index < 3) return inquiry(basics[opening[index]]);
+  const delivery = marketOrder(shift, shiftOrder, market);
+  if (delivery) return delivery;
   if (shift > 1 && stock.length > 6 && shiftOrder % 4 === 3) {
     if (shift >= 3)
       return inquiry({
@@ -159,6 +218,37 @@ export function orderFor(
           "Return one column named total. This is an inquiry, not a purchase.",
       });
     return inquiry(basics[Math.floor(random() * basics.length)]);
+  }
+  if (
+    previousVariant !== "named" &&
+    (random() < (shift === 1 ? 0.22 : 0.45) ||
+      (shift === 1 && previousVariant === "everything"))
+  ) {
+    const pool = [...stock];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    const count = Math.min(
+      stock.length,
+      shift === 1 ? 3 + Math.floor(random() * 3) : 1 + Math.floor(random() * 5),
+    );
+    const wanted = pool.slice(0, count).map((item) => item.name);
+    const filter =
+      count === 1
+        ? `name = ${quote(wanted[0])}`
+        : `name IN (${wanted.map(quote).join(", ")})`;
+    return {
+      kind: "purchase",
+      variant: "named",
+      ordered: false,
+      concept: count === 1 ? "WHERE name" : "Names + IN",
+      text: `I'll buy ${wanted.map((name) => `“${name}”`).join(", ")}. My shopping list is very specific. Don't ask why.`,
+      sql: `SELECT * FROM inventory WHERE ${filter};`,
+      starter: "SELECT *\nFROM inventory\nWHERE ",
+      hint: `Use ${filter}. IN matches any name in a list; text goes inside single quotes.`,
+      requirement: `Return all four columns for exactly these ${count} item${count === 1 ? "" : "s"}. Any row order is fine.`,
+    };
   }
   if (shift === 1) {
     // Broad filters guarantee substantial baskets and a short first shift.
@@ -225,10 +315,10 @@ export function orderFor(
       ordered: true,
       concept: chosen.filter ? "WHERE + sorting" : "ORDER BY + LIMIT",
       text: `I'll buy your ${count} ${descending ? "most expensive" : "cheapest"} ${count === 1 ? chosen.description.replace(/\bitems\b/g, "item") : chosen.description}! ${chosen.flavor}`,
-      sql: `SELECT * FROM inventory${where} ORDER BY price ${direction}, id ASC LIMIT ${count};`,
+      sql: `SELECT * FROM inventory${where} ORDER BY price ${direction}, name ASC LIMIT ${count};`,
       starter: `SELECT *\nFROM inventory\n${chosen.filter ? "WHERE " : "ORDER BY "}`,
-      hint: `${chosen.filter ? `Filter with ${chosen.filter}. ` : "No filter needed. "}ORDER BY price ${direction} sorts ${descending ? "highest" : "lowest"} prices first. Break ties with id ASC, then LIMIT ${count}.`,
-      requirement: `Return all columns, price ${descending ? "highest" : "lowest"} first; tied prices use smallest id first. Sell exactly ${count} item${count === 1 ? "" : "s"}.`,
+      hint: `${chosen.filter ? `Filter with ${chosen.filter}. ` : "No filter needed. "}ORDER BY price ${direction} sorts ${descending ? "highest" : "lowest"} prices first. Break ties with name ASC, then LIMIT ${count}.`,
+      requirement: `Return all columns, price ${descending ? "highest" : "lowest"} first; tied prices use alphabetical names first. Sell exactly ${count} item${count === 1 ? "" : "s"}.`,
     };
   }
   let filter = `category = '${category}'`;
@@ -270,36 +360,65 @@ export function orderFor(
   return {
     kind: "purchase",
     text: `I'll buy your ${count} ${priceOrder} ${count === 1 ? description.replace(/\bitems\b/g, "item") : description}. ${direction === "DESC" ? "Only the best for my secret project!" : "My coin purse is mostly moths."}`,
-    sql: `SELECT * FROM inventory WHERE ${filter} ORDER BY price ${direction}, id ASC LIMIT ${count};`,
+    sql: `SELECT * FROM inventory WHERE ${filter} ORDER BY price ${direction}, name ASC LIMIT ${count};`,
     concept,
     ordered: true,
     starter: "SELECT *\nFROM inventory\nWHERE ",
-    hint: `Filter with ${filter}. Then ORDER BY price ${direction}, id ASC LIMIT ${count}.`,
-    requirement: `Return all columns, sorted by price ${direction === "DESC" ? "highest" : "lowest"} first, then id smallest first. Sell exactly ${count} item${count === 1 ? "" : "s"}.`,
+    hint: `Filter with ${filter}. Then ORDER BY price ${direction}, name ASC LIMIT ${count}.`,
+    requirement: `Return all columns, sorted by price ${direction === "DESC" ? "highest" : "lowest"} first, then name alphabetically. Sell exactly ${count} item${count === 1 ? "" : "s"}.`,
   };
 }
-export function completeOrder(stock, order, actual, expected, streak) {
+export function completeOrder(
+  stock,
+  order,
+  actual,
+  expected,
+  streak,
+  market = null,
+) {
   if (!sameResult(actual, expected, order.ordered)) return null;
   const tip = 10 * (1 + Math.floor(streak / 3));
   if (order.kind === "inquiry")
     return { stock, earned: tip, sale: 0, tip, sold: 0 };
-  const ids = actual.values.map((row) => row[actual.columns.indexOf("id")]);
-  const selected = stock.filter((item) => ids.includes(item.id));
+  const selectedNames = actual.values.map(
+    (row) => row[actual.columns.indexOf("name")],
+  );
+  const source = order.kind === "import" ? market || [] : stock;
+  const selected = source.filter((item) => selectedNames.includes(item.name));
   if (
-    !ids.length ||
-    new Set(ids).size !== ids.length ||
-    selected.length !== ids.length
+    !selectedNames.length ||
+    new Set(selectedNames).size !== selectedNames.length ||
+    selected.length !== selectedNames.length
   )
     return null;
+  if (order.kind === "import") {
+    if (
+      selected.length > 3 ||
+      selected.some((item) =>
+        stock.some((existing) => existing.name === item.name),
+      )
+    )
+      return null;
+    return {
+      stock: [...stock, ...selected],
+      market: market.filter((item) => !selectedNames.includes(item.name)),
+      earned: tip,
+      sale: 0,
+      tip,
+      sold: 0,
+      imported: selected.length,
+    };
+  }
   const sale = selected.reduce((sum, item) => sum + item.price, 0);
   return {
-    stock: stock.filter((item) => !ids.includes(item.id)),
+    stock: stock.filter((item) => !selectedNames.includes(item.name)),
     earned: sale + tip,
     sale,
     tip,
-    sold: ids.length,
+    sold: selected.length,
   };
 }
+
 export function advanceShift(state, random = Math.random) {
   if (state.stock.length || state.hearts <= 0)
     throw new Error("Finish selling the stock before restocking.");
@@ -309,6 +428,7 @@ export function advanceShift(state, random = Math.random) {
     shiftOrder: 0,
     index: state.index + 1,
     stock: makeStock(random, state.shift + 1),
+    market: makeMarket(random, state.shift + 1),
     shiftStartGold: state.score,
     patience: 80,
     remaining: 80,

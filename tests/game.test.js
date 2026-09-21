@@ -27,7 +27,7 @@ test("alternative SQL and column order pass; missing rows and duplicates fail", 
     sameResult(
       query(
         database,
-        "SELECT cursed, price, category, name, id FROM inventory WHERE category IN ('potion') ORDER BY id DESC",
+        "SELECT cursed, price, category, name FROM inventory WHERE category IN ('potion') ORDER BY name DESC",
       ),
       expected,
     ),
@@ -134,9 +134,9 @@ function rng(seedValue) {
     return n / 4294967296;
   };
 }
-function queryStock(stock, sql) {
+function queryStock(stock, sql, market = null) {
   const database = new SQL.Database();
-  seed(database, stock);
+  seed(database, stock, market);
   try {
     return query(database, sql);
   } finally {
@@ -163,10 +163,10 @@ test("purchases remove only selected stock and credit item value plus a streak t
   assert.equal(done.tip, 20);
   assert.equal(done.stock.length, 24 - expected.values.length);
   assert.equal(done.earned, done.sale + 20);
-  const soldIds = expected.values.map(
-    (row) => row[expected.columns.indexOf("id")],
+  const soldNames = expected.values.map(
+    (row) => row[expected.columns.indexOf("name")],
   );
-  assert.ok(done.stock.every((item) => !soldIds.includes(item.id)));
+  assert.ok(done.stock.every((item) => !soldNames.includes(item.name)));
   assert.equal(completeOrder(done.stock, order, expected, expected, 3), null);
 });
 test("aggregate inquiries do not consume stock", () => {
@@ -281,4 +281,110 @@ test("first shift finishes in at most nine orders with varied, fulfillable baske
   console.log(
     `First-shift pacing: ${Math.min(...totals)}–${Math.max(...totals)} orders; mean ${(totals.reduce((a, b) => a + b, 0) / totals.length).toFixed(1)} across 100 seeds.`,
   );
+});
+
+import { makeMarket, marketOrder } from "../src/game.js";
+test("black market unlocks in shift two with one discovery and later one delivery", () => {
+  assert.equal(makeMarket(rng(1), 1), null);
+  const market = makeMarket(rng(1), 2);
+  assert.equal(market.length, 8);
+  assert.notDeepEqual(market, makeMarket(rng(2), 2));
+  assert.equal(marketOrder(2, 1, market).kind, "inquiry");
+  assert.equal(marketOrder(3, 2, market).kind, "import");
+  for (let round = 0; round < 30; round++) {
+    if (round !== 1) assert.equal(marketOrder(2, round, market), null);
+    if (round !== 2) assert.equal(marketOrder(3, round, market), null);
+  }
+  assert.throws(() => queryStock(inventory, "SELECT * FROM black_market"));
+  assert.deepEqual(queryStock(inventory, "SELECT * FROM inventory").columns, [
+    "name",
+    "category",
+    "price",
+    "cursed",
+  ]);
+});
+import { inventory } from "../src/game.js";
+test("JOIN imports transfer real stock once, reject duplicates, and preserve sale value", () => {
+  const stock = makeStock(rng(8));
+  const market = makeMarket(rng(8), 3);
+  const order = marketOrder(3, 2, market);
+  const result = queryStock(stock, order.sql, market);
+  assert.equal(result.values.length, 3);
+  const done = completeOrder(stock, order, result, result, 0, market);
+  assert.equal(done.stock.length, stock.length + 3);
+  assert.equal(done.market.length, market.length - 3);
+  assert.equal(done.earned, 10);
+  assert.equal(
+    completeOrder(done.stock, order, result, result, 0, done.market),
+    null,
+  );
+  assert.equal(
+    completeOrder(
+      stock,
+      order,
+      { ...result, values: [...result.values, result.values[0]] },
+      result,
+      0,
+      market,
+    ),
+    null,
+  );
+  const name = result.values[0][0];
+  const sale = { kind: "purchase", ordered: false };
+  const basket = queryStock(
+    done.stock,
+    `SELECT * FROM inventory WHERE name = '${name}'`,
+    done.market,
+  );
+  const sold = completeOrder(done.stock, sale, basket, basket, 0, done.market);
+  assert.equal(sold.sale, market.find((item) => item.name === name).price);
+  assert.equal(sold.stock.length, stock.length + 2);
+});
+test("full shifts with market discovery, imports, and named orders always sell out", () => {
+  const concepts = new Set();
+  for (let shift = 2; shift <= 6; shift++)
+    for (let seedValue = 1; seedValue <= 20; seedValue++) {
+      const random = rng(seedValue);
+      let stock = makeStock(random, shift),
+        market = makeMarket(random, shift),
+        previous = null,
+        deliveries = 0,
+        discoveries = 0,
+        round = 0;
+      while (stock.length && round < 80) {
+        const order = orderFor(
+          50 + round,
+          random,
+          [0, 1, 2],
+          stock,
+          shift,
+          round,
+          previous,
+          market,
+        );
+        concepts.add(order.concept);
+        const expected = queryStock(stock, order.sql, market);
+        assert.ok(expected.values.length);
+        const done = completeOrder(
+          stock,
+          order,
+          expected,
+          expected,
+          round,
+          market,
+        );
+        assert.ok(done);
+        if (order.kind === "import") deliveries++;
+        if (order.concept === "Discover black_market") discoveries++;
+        stock = done.stock;
+        market = done.market || market;
+        previous = order.variant;
+        round++;
+      }
+      assert.equal(stock.length, 0);
+      assert.equal(deliveries, shift >= 3 ? 1 : 0);
+      assert.equal(discoveries, shift === 2 ? 1 : 0);
+    }
+  assert.ok(concepts.has("WHERE name"));
+  assert.ok(concepts.has("Names + IN"));
 });
